@@ -1,5 +1,5 @@
 
-import { Response } from '@/types';
+import { Response, Question } from '@/types';
 
 // Save responses to localStorage
 export const saveResponses = (responses: Response[]): void => {
