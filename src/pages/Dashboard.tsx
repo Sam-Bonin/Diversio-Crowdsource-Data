@@ -18,7 +18,13 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { User, Question, SentimentType, FeedbackType, Response } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
-import { ArrowRight, LogOut } from 'lucide-react';
+import { ArrowRight, Download, LogOut } from 'lucide-react';
+import { 
+  saveResponses, 
+  getResponses, 
+  downloadCSV,
+  getNextQuestionId
+} from '@/utils/csvStorage';
 
 // Sample data
 const USERS: User[] = [
@@ -63,10 +69,8 @@ const Dashboard = () => {
 
   // Load responses from localStorage
   useEffect(() => {
-    const savedResponses = localStorage.getItem('responses');
-    if (savedResponses) {
-      setResponses(JSON.parse(savedResponses));
-    }
+    const savedResponses = getResponses();
+    setResponses(savedResponses);
 
     // Set initial question
     setCurrentQuestion(QUESTIONS[0]);
@@ -101,6 +105,20 @@ const Dashboard = () => {
 
   const handleUserSelect = (value: string) => {
     setSelectedUser(value);
+    
+    // Find the next question for this user
+    if (value) {
+      const nextQuestionId = getNextQuestionId(value, currentQuestion?.id || 1, QUESTIONS, responses);
+      const nextQuestion = QUESTIONS.find(q => q.id === nextQuestionId) || QUESTIONS[0];
+      setCurrentQuestion(nextQuestion);
+      
+      // Find index of next question
+      const nextIndex = QUESTIONS.findIndex(q => q.id === nextQuestionId);
+      if (nextIndex !== -1) {
+        setQuestionIndex(nextIndex);
+      }
+    }
+    
     // Reset selections
     setSelectedSentiment(null);
     setSelectedFeedback(null);
@@ -143,12 +161,18 @@ const Dashboard = () => {
 
     const updatedResponses = [...responses, newResponse];
     setResponses(updatedResponses);
-    localStorage.setItem('responses', JSON.stringify(updatedResponses));
+    saveResponses(updatedResponses);
 
-    // Move to next question
-    const nextIndex = (questionIndex + 1) % QUESTIONS.length;
-    setQuestionIndex(nextIndex);
-    setCurrentQuestion(QUESTIONS[nextIndex]);
+    // Find next question for this user
+    const nextQuestionId = getNextQuestionId(selectedUser, currentQuestion.id, QUESTIONS, updatedResponses);
+    const nextQuestion = QUESTIONS.find(q => q.id === nextQuestionId) || QUESTIONS[0];
+    setCurrentQuestion(nextQuestion);
+    
+    // Find index of next question
+    const nextIndex = QUESTIONS.findIndex(q => q.id === nextQuestionId);
+    if (nextIndex !== -1) {
+      setQuestionIndex(nextIndex);
+    }
     
     // Reset selections
     setSelectedSentiment(null);
@@ -161,15 +185,25 @@ const Dashboard = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    downloadCSV(responses);
+    toast.success('CSV file downloaded');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Top Bar */}
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-medium">Feedback System</h1>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" /> Logout
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportCSV}>
+              <Download className="w-4 h-4 mr-2" /> Export CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" /> Logout
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

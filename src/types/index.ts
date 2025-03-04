@@ -23,3 +23,7 @@ export type Response = {
   skipped: boolean;
   timestamp: number;
 };
+
+export type CSVData = {
+  responses: Response[];
+};
