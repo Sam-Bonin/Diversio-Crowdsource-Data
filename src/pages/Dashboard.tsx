@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -26,7 +25,6 @@ import {
   getQuestions,
   getNextQuestionId
 } from '@/utils/csvStorage';
-import { supabase } from '@/integrations/supabase/client';
 
 const Dashboard = () => {
   const navigate = useNavigate();

@@ -1,5 +1,5 @@
 
-import { Response, Question } from '@/types';
+import { Response, Question, SentimentType, FeedbackType } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 
 // Save responses to Supabase
@@ -19,11 +19,9 @@ export const saveResponses = async (response: Response): Promise<void> => {
     
     if (error) throw error;
     
-    // Update user count
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ count: supabase.rpc('increment_count') })
-      .eq('name', response.userName);
+    // Update user count using the increment_count function
+    const { data, error: updateError } = await supabase
+      .rpc('increment_count', { username: response.userName });
     
     if (updateError) console.error('Error updating user count:', updateError);
   } catch (error) {
@@ -46,8 +44,8 @@ export const getResponses = async (): Promise<Response[]> => {
       id: item.id,
       userName: item.user_name,
       questionId: item.question_id,
-      sentiment: item.sentiment,
-      feedback: item.feedback,
+      sentiment: item.sentiment as SentimentType,
+      feedback: item.feedback as FeedbackType,
       skipped: item.skipped,
       timestamp: item.timestamp
     }));
