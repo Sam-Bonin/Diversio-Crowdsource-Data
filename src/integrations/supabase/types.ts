@@ -9,7 +9,87 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      questions: {
+        Row: {
+          answer: string
+          id: number
+          question: string
+        }
+        Insert: {
+          answer: string
+          id?: number
+          question: string
+        }
+        Update: {
+          answer?: string
+          id?: number
+          question?: string
+        }
+        Relationships: []
+      }
+      responses: {
+        Row: {
+          feedback: string
+          id: string
+          question_id: number | null
+          sentiment: string
+          skipped: boolean | null
+          timestamp: number
+          user_name: string | null
+        }
+        Insert: {
+          feedback: string
+          id?: string
+          question_id?: number | null
+          sentiment: string
+          skipped?: boolean | null
+          timestamp?: number
+          user_name?: string | null
+        }
+        Update: {
+          feedback?: string
+          id?: string
+          question_id?: number | null
+          sentiment?: string
+          skipped?: boolean | null
+          timestamp?: number
+          user_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "responses_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "responses_user_name_fkey"
+            columns: ["user_name"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["name"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          count: number | null
+          id: number
+          name: string
+        }
+        Insert: {
+          count?: number | null
+          id?: number
+          name: string
+        }
+        Update: {
+          count?: number | null
+          id?: number
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

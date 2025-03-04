@@ -1,83 +1,136 @@
 
 import { Response, Question } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 
-// Save responses to localStorage
-export const saveResponses = (responses: Response[]): void => {
-  localStorage.setItem('responses', JSON.stringify(responses));
+// Save responses to Supabase
+export const saveResponses = async (response: Response): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('responses')
+      .insert({
+        id: response.id,
+        user_name: response.userName,
+        question_id: response.questionId,
+        sentiment: response.sentiment,
+        feedback: response.feedback,
+        skipped: response.skipped,
+        timestamp: response.timestamp
+      });
+    
+    if (error) throw error;
+    
+    // Update user count
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ count: supabase.rpc('increment_count') })
+      .eq('name', response.userName);
+    
+    if (updateError) console.error('Error updating user count:', updateError);
+  } catch (error) {
+    console.error('Error saving response to Supabase:', error);
+    throw error;
+  }
 };
 
-// Get responses from localStorage
-export const getResponses = (): Response[] => {
-  const savedData = localStorage.getItem('responses');
-  return savedData ? JSON.parse(savedData) : [];
+// Get responses from Supabase
+export const getResponses = async (): Promise<Response[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('responses')
+      .select('*');
+    
+    if (error) throw error;
+    
+    // Map Supabase data to our Response type
+    return data.map(item => ({
+      id: item.id,
+      userName: item.user_name,
+      questionId: item.question_id,
+      sentiment: item.sentiment,
+      feedback: item.feedback,
+      skipped: item.skipped,
+      timestamp: item.timestamp
+    }));
+  } catch (error) {
+    console.error('Error getting responses from Supabase:', error);
+    return [];
+  }
 };
 
-// Export responses as CSV
-export const exportResponsesAsCSV = (responses: Response[]): string => {
-  // Header row
-  const headers = ['id', 'userName', 'questionId', 'sentiment', 'feedback', 'skipped', 'timestamp'];
-  
-  // Convert responses to CSV rows
-  const rows = responses.map(response => [
-    response.id,
-    response.userName,
-    response.questionId,
-    response.sentiment,
-    response.feedback,
-    response.skipped.toString(),
-    new Date(response.timestamp).toISOString()
-  ]);
-  
-  // Combine header and rows
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.join(','))
-  ].join('\n');
-  
-  return csvContent;
+// Get users from Supabase
+export const getUsers = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('count', { ascending: false });
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error getting users from Supabase:', error);
+    return [];
+  }
 };
 
-// Download CSV file
-export const downloadCSV = (responses: Response[]): void => {
-  const csvContent = exportResponsesAsCSV(responses);
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  
-  link.setAttribute('href', url);
-  link.setAttribute('download', `feedback_responses_${new Date().toISOString().split('T')[0]}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+// Get questions from Supabase
+export const getQuestions = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('*');
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error getting questions from Supabase:', error);
+    return [];
+  }
 };
 
 // Get next question for a user based on their previous responses
-export const getNextQuestionId = (
+export const getNextQuestionId = async (
   userName: string, 
-  currentQuestionId: number, 
-  questions: Question[], 
-  responses: Response[]
-): number => {
-  const userResponses = responses.filter(r => r.userName === userName);
-  
-  // Get all question IDs the user has already answered
-  const answeredQuestionIds = new Set(userResponses.map(r => r.questionId));
-  
-  // Find questions the user hasn't answered yet
-  const unansweredQuestions = questions.filter(q => !answeredQuestionIds.has(q.id));
-  
-  // If there are unanswered questions, return the first one
-  if (unansweredQuestions.length > 0) {
-    return unansweredQuestions[0].id;
+  currentQuestionId: number,
+): Promise<number> => {
+  try {
+    // Get all questions
+    const { data: questions, error: questionsError } = await supabase
+      .from('questions')
+      .select('*');
+    
+    if (questionsError) throw questionsError;
+    
+    // Get user's responses
+    const { data: userResponses, error: responsesError } = await supabase
+      .from('responses')
+      .select('*')
+      .eq('user_name', userName);
+    
+    if (responsesError) throw responsesError;
+    
+    // Get all question IDs the user has already answered
+    const answeredQuestionIds = new Set(userResponses.map(r => r.question_id));
+    
+    // Find questions the user hasn't answered yet
+    const unansweredQuestions = questions.filter(q => !answeredQuestionIds.has(q.id));
+    
+    // If there are unanswered questions, return the first one
+    if (unansweredQuestions.length > 0) {
+      return unansweredQuestions[0].id;
+    }
+    
+    // If user has answered all questions, find the least recently answered
+    if (userResponses.length > 0) {
+      // Sort by timestamp (oldest first)
+      const sortedResponses = [...userResponses].sort((a, b) => a.timestamp - b.timestamp);
+      return sortedResponses[0].question_id;
+    }
+    
+    // If no responses yet, return the current question ID or the first question
+    return currentQuestionId || (questions[0]?.id || 1);
+  } catch (error) {
+    console.error('Error getting next question:', error);
+    return currentQuestionId || 1;
   }
-  
-  // If user has answered all questions, find the least recently answered
-  if (userResponses.length > 0) {
-    // Sort by timestamp (oldest first)
-    const sortedResponses = [...userResponses].sort((a, b) => a.timestamp - b.timestamp);
-    return sortedResponses[0].questionId;
-  }
-  
-  // If no responses yet, return the current question ID or the first question
-  return currentQuestionId || questions[0].id;
 };

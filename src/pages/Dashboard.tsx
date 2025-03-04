@@ -18,35 +18,15 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { User, Question, SentimentType, FeedbackType, Response } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
-import { ArrowRight, Download, LogOut } from 'lucide-react';
+import { ArrowRight, LogOut } from 'lucide-react';
 import { 
   saveResponses, 
   getResponses, 
-  downloadCSV,
+  getUsers,
+  getQuestions,
   getNextQuestionId
 } from '@/utils/csvStorage';
-
-// Sample data
-const USERS: User[] = [
-  { id: 1, name: 'John Doe', count: 23 },
-  { id: 2, name: 'Jane Smith', count: 12 },
-  { id: 3, name: 'Robert Johnson', count: 35 },
-  { id: 4, name: 'Emily Davis', count: 27 },
-  { id: 5, name: 'Michael Brown', count: 19 },
-  { id: 6, name: 'Sarah Wilson', count: 64 },
-  { id: 7, name: 'David Taylor', count: 8 },
-  { id: 8, name: 'Amanda Miller', count: 42 },
-  { id: 9, name: 'Thomas Anderson', count: 31 },
-  { id: 10, name: 'Lisa White', count: 15 },
-];
-
-const QUESTIONS: Question[] = [
-  { id: 1, question: "How satisfied are you with the application's user interface?", answer: "The interface is clean and intuitive, with good use of white space and clear visual hierarchy." },
-  { id: 2, question: "What do you think about the response time of the system?", answer: "Response times are excellent. Most actions complete in under a second." },
-  { id: 3, question: "How would you rate the onboarding experience?", answer: "The onboarding is straightforward, but could use more tooltips for first-time users." },
-  { id: 4, question: "Is the documentation clear and helpful?", answer: "Documentation is comprehensive but could be organized better for easier reference." },
-  { id: 5, question: "What features would you like to see added or improved?", answer: "Integration with third-party apps would greatly enhance the functionality." },
-];
+import { supabase } from '@/integrations/supabase/client';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -54,10 +34,13 @@ const Dashboard = () => {
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [selectedSentiment, setSelectedSentiment] = useState<SentimentType | null>(null);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackType | null>(null);
-  const [leaderboard, setLeaderboard] = useState<User[]>([...USERS].sort((a, b) => b.count - a.count));
+  const [leaderboard, setLeaderboard] = useState<User[]>([]);
   const [responses, setResponses] = useState<Response[]>([]);
   const [progress, setProgress] = useState<number>(0);
   const [questionIndex, setQuestionIndex] = useState<number>(0);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Check if user is authenticated
   useEffect(() => {
@@ -67,53 +50,61 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  // Load responses from localStorage
+  // Load data from Supabase
   useEffect(() => {
-    const savedResponses = getResponses();
-    setResponses(savedResponses);
-
-    // Set initial question
-    setCurrentQuestion(QUESTIONS[0]);
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Get users from Supabase
+        const usersData = await getUsers();
+        setUsers(usersData);
+        setLeaderboard(usersData);
+        
+        // Get questions from Supabase
+        const questionsData = await getQuestions();
+        setQuestions(questionsData);
+        
+        // Set initial question
+        if (questionsData.length > 0) {
+          setCurrentQuestion(questionsData[0]);
+        }
+        
+        // Get responses from Supabase
+        const responsesData = await getResponses();
+        setResponses(responsesData);
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast.error('Failed to load data');
+        setIsLoading(false);
+      }
+    };
+    
+    fetchData();
   }, []);
 
   // Update progress when responses change
   useEffect(() => {
-    if (selectedUser) {
+    if (selectedUser && questions.length > 0) {
       const userResponses = responses.filter(r => r.userName === selectedUser);
       const uniqueQuestionsAnswered = new Set(userResponses.map(r => r.questionId)).size;
-      setProgress(Math.round((uniqueQuestionsAnswered / QUESTIONS.length) * 100));
+      setProgress(Math.round((uniqueQuestionsAnswered / questions.length) * 100));
     }
-  }, [responses, selectedUser]);
+  }, [responses, selectedUser, questions]);
 
-  // Update leaderboard
-  useEffect(() => {
-    const updatedLeaderboard = [...USERS].map(user => {
-      const userResponseCount = new Set(
-        responses
-          .filter(r => r.userName === user.name)
-          .map(r => r.questionId)
-      ).size;
-      
-      return {
-        ...user,
-        count: userResponseCount || user.count // Keep original count if no responses
-      };
-    });
-    
-    setLeaderboard(updatedLeaderboard.sort((a, b) => b.count - a.count));
-  }, [responses]);
-
-  const handleUserSelect = (value: string) => {
+  const handleUserSelect = async (value: string) => {
     setSelectedUser(value);
     
     // Find the next question for this user
-    if (value) {
-      const nextQuestionId = getNextQuestionId(value, currentQuestion?.id || 1, QUESTIONS, responses);
-      const nextQuestion = QUESTIONS.find(q => q.id === nextQuestionId) || QUESTIONS[0];
+    if (value && questions.length > 0) {
+      const nextQuestionId = await getNextQuestionId(value, currentQuestion?.id || 1);
+      const nextQuestion = questions.find(q => q.id === nextQuestionId) || questions[0];
       setCurrentQuestion(nextQuestion);
       
       // Find index of next question
-      const nextIndex = QUESTIONS.findIndex(q => q.id === nextQuestionId);
+      const nextIndex = questions.findIndex(q => q.id === nextQuestionId);
       if (nextIndex !== -1) {
         setQuestionIndex(nextIndex);
       }
@@ -138,7 +129,7 @@ const Dashboard = () => {
     setSelectedFeedback(feedback);
   };
 
-  const recordResponse = (skipped: boolean) => {
+  const recordResponse = async (skipped: boolean) => {
     if (!selectedUser || !currentQuestion) {
       toast.error('Please select a user first');
       return;
@@ -159,36 +150,50 @@ const Dashboard = () => {
       timestamp: Date.now()
     };
 
-    const updatedResponses = [...responses, newResponse];
-    setResponses(updatedResponses);
-    saveResponses(updatedResponses);
+    try {
+      // Save response to Supabase
+      await saveResponses(newResponse);
+      
+      // Update local state
+      setResponses([...responses, newResponse]);
+      
+      // Refresh leaderboard
+      const updatedUsers = await getUsers();
+      setLeaderboard(updatedUsers);
+      
+      // Find next question for this user
+      const nextQuestionId = await getNextQuestionId(selectedUser, currentQuestion.id);
+      const nextQuestion = questions.find(q => q.id === nextQuestionId) || questions[0];
+      setCurrentQuestion(nextQuestion);
+      
+      // Find index of next question
+      const nextIndex = questions.findIndex(q => q.id === nextQuestionId);
+      if (nextIndex !== -1) {
+        setQuestionIndex(nextIndex);
+      }
+      
+      // Reset selections
+      setSelectedSentiment(null);
+      setSelectedFeedback(null);
 
-    // Find next question for this user
-    const nextQuestionId = getNextQuestionId(selectedUser, currentQuestion.id, QUESTIONS, updatedResponses);
-    const nextQuestion = QUESTIONS.find(q => q.id === nextQuestionId) || QUESTIONS[0];
-    setCurrentQuestion(nextQuestion);
-    
-    // Find index of next question
-    const nextIndex = QUESTIONS.findIndex(q => q.id === nextQuestionId);
-    if (nextIndex !== -1) {
-      setQuestionIndex(nextIndex);
-    }
-    
-    // Reset selections
-    setSelectedSentiment(null);
-    setSelectedFeedback(null);
-
-    if (skipped) {
-      toast.info('Response skipped');
-    } else {
-      toast.success('Response recorded');
+      if (skipped) {
+        toast.info('Response skipped');
+      } else {
+        toast.success('Response recorded');
+      }
+    } catch (error) {
+      console.error('Error recording response:', error);
+      toast.error('Failed to record response');
     }
   };
 
-  const handleExportCSV = () => {
-    downloadCSV(responses);
-    toast.success('CSV file downloaded');
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex items-center justify-center">
+        <p className="text-xl">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary p-4 md:p-8">
@@ -197,9 +202,6 @@ const Dashboard = () => {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-medium">Feedback System</h1>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportCSV}>
-              <Download className="w-4 h-4 mr-2" /> Export CSV
-            </Button>
             <Button variant="outline" size="sm" onClick={handleLogout}>
               <LogOut className="w-4 h-4 mr-2" /> Logout
             </Button>
@@ -220,7 +222,7 @@ const Dashboard = () => {
                     <SelectValue placeholder="Select your name" />
                   </SelectTrigger>
                   <SelectContent className="bg-white">
-                    {USERS.map((user) => (
+                    {users.map((user) => (
                       <SelectItem key={user.id} value={user.name}>
                         {user.name}
                       </SelectItem>
