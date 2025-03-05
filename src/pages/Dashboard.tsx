@@ -219,9 +219,9 @@ const Dashboard = () => {
       const nextQuestionId = await getNextQuestionId(selectedUser, currentQuestion.id);
       console.log(`Current question ID: ${currentQuestion.id}, Next question ID: ${nextQuestionId}`);
 
-      // Only show "all answered" if we get back the same ID AND there are no unanswered questions
+      // Only show "all answered" if we get back the same ID AND there are NO unanswered questions
       const unansweredQuestions = questions.filter(q => q.answered !== true);
-      if (nextQuestionId === currentQuestion.id && unansweredQuestions.length <= 1) {
+      if (nextQuestionId === currentQuestion.id && unansweredQuestions.length === 0) {
         toast.info('All questions have been answered');
         return;
       }
@@ -257,6 +257,12 @@ const Dashboard = () => {
   const toggleTutorialVideo = () => {
     setShowTutorialVideo(!showTutorialVideo);
   };
+
+  // Check if the current question has been answered already
+  const isCurrentQuestionAnswered = currentQuestion?.answered === true;
+
+  // Check if all questions have been answered
+  const allQuestionsAnswered = questions.filter(q => q.answered !== true).length === 0;
 
   if (isLoading) {
     return (
@@ -390,6 +396,20 @@ const Dashboard = () => {
                 <CardContent className="space-y-4">
                   <p className="text-xl font-medium">{currentQuestion.question}</p>
                   <p className="text-gray-700">{currentQuestion.answer}</p>
+                  
+                  {/* Show a message if the question is already answered */}
+                  {isCurrentQuestionAnswered && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-amber-800 text-sm mt-2">
+                      This question has already been classified. Please skip to the next question.
+                    </div>
+                  )}
+                  
+                  {/* Show a different message if all questions are answered */}
+                  {allQuestionsAnswered && (
+                    <div className="bg-green-50 border border-green-200 rounded-md p-3 text-green-800 text-sm mt-2">
+                      All questions have been classified. Thank you for your contribution!
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -499,13 +519,14 @@ const Dashboard = () => {
                 variant="secondary" 
                 className="w-32 h-12 button-shadow"
                 onClick={() => recordResponse(true)}
+                disabled={allQuestionsAnswered}
               >
                 Skip
               </Button>
               <Button 
                 className="w-32 h-12 button-shadow"
                 onClick={() => recordResponse(false)}
-                disabled={!selectedUser || !selectedSentiment || !selectedFeedback}
+                disabled={!selectedUser || !selectedSentiment || !selectedFeedback || isCurrentQuestionAnswered || allQuestionsAnswered}
               >
                 Log <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
