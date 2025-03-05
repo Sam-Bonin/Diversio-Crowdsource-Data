@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { User, Question, SentimentType, FeedbackType, Response } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
-import { ArrowRight, LogOut } from 'lucide-react';
+import { ArrowRight, LogOut, ChevronDown, ChevronUp, HelpCircle, X } from 'lucide-react';
 import { 
   saveResponses, 
   getResponses, 
@@ -39,6 +39,8 @@ const Dashboard = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [userSectionExpanded, setUserSectionExpanded] = useState<boolean>(true);
+  const [showTutorialVideo, setShowTutorialVideo] = useState<boolean>(false);
 
   // Check if user is authenticated
   useEffect(() => {
@@ -85,12 +87,12 @@ const Dashboard = () => {
 
   // Update progress when responses change
   useEffect(() => {
-    if (selectedUser && questions.length > 0) {
-      const userResponses = responses.filter(r => r.userName === selectedUser);
-      const uniqueQuestionsAnswered = new Set(userResponses.map(r => r.questionId)).size;
+    if (questions.length > 0) {
+      // Get all unique question IDs that have been answered by any user
+      const uniqueQuestionsAnswered = new Set(responses.map(r => r.questionId)).size;
       setProgress(Math.round((uniqueQuestionsAnswered / questions.length) * 100));
     }
-  }, [responses, selectedUser, questions]);
+  }, [responses, questions]);
 
   const handleUserSelect = async (value: string) => {
     setSelectedUser(value);
@@ -185,6 +187,14 @@ const Dashboard = () => {
     }
   };
 
+  const toggleUserSection = () => {
+    setUserSectionExpanded(!userSectionExpanded);
+  };
+
+  const toggleTutorialVideo = () => {
+    setShowTutorialVideo(!showTutorialVideo);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background to-secondary flex items-center justify-center">
@@ -211,108 +221,176 @@ const Dashboard = () => {
           <div className="lg:col-span-3 space-y-6 animate-fade-in">
             {/* User Selection */}
             <Card className="border border-border shadow-sm">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between">
                 <CardTitle className="text-lg text-muted-foreground font-normal">Who are you?</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={toggleTutorialVideo}
+                    className="h-8 p-2 flex items-center gap-1 text-xs"
+                  >
+                    <HelpCircle className="h-3 w-3" />
+                    {showTutorialVideo ? "Hide tutorial" : "Teach me how to do this"}
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={toggleUserSection}
+                    className="h-8 w-8 p-0"
+                  >
+                    {userSectionExpanded ? 
+                      <ChevronUp className="h-4 w-4" /> : 
+                      <ChevronDown className="h-4 w-4" />
+                    }
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent>
-                <Select value={selectedUser} onValueChange={handleUserSelect}>
-                  <SelectTrigger className="w-full md:w-72">
-                    <SelectValue placeholder="Select your name" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.name}>
-                        {user.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
+              {userSectionExpanded && (
+                <CardContent>
+                  {showTutorialVideo && (
+                    <div className="mb-4">
+                      <div className="relative w-full pb-[56.25%] mb-2">
+                        <iframe 
+                          className="absolute top-0 left-0 w-full h-full rounded-md"
+                          src="https://www.youtube.com/embed/dQw4w9WgXcQ" 
+                          title="Tutorial video"
+                          frameBorder="0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        ></iframe>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={toggleTutorialVideo}
+                        className="flex items-center gap-1"
+                      >
+                        <X className="h-3 w-3" /> Close tutorial
+                      </Button>
+                    </div>
+                  )}
+                  <Select value={selectedUser} onValueChange={handleUserSelect}>
+                    <SelectTrigger className="w-full md:w-72">
+                      <SelectValue placeholder="Select your name" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.name}>
+                          {user.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </CardContent>
+              )}
             </Card>
 
-            {/* Question and Answer */}
+            {/* Combined Question and Answer */}
             {currentQuestion && (
-              <>
-                <Card className="border border-border shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg text-muted-foreground font-normal">Question</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xl font-medium">{currentQuestion.question}</p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-border shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg text-muted-foreground font-normal">Answer</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-gray-700">{currentQuestion.answer}</p>
-                  </CardContent>
-                </Card>
-              </>
+              <Card className="border border-border shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg text-muted-foreground font-normal">Question & Response</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-xl font-medium">{currentQuestion.question}</p>
+                  <p className="text-gray-700">{currentQuestion.answer}</p>
+                </CardContent>
+              </Card>
             )}
 
             {/* Sentiment and Feedback Buttons */}
             <div className="space-y-4">
-              {/* Sentiment Buttons */}
+              {/* Sentiment Buttons with improved color transitions */}
               <div className="grid grid-cols-4 gap-4">
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedSentiment === 'Positive' ? 'bg-positive text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedSentiment === 'Positive' 
+                      ? 'bg-positive text-white hover:bg-positive' 
+                      : 'bg-white hover:bg-positive/20'
+                  }`}
                   onClick={() => handleSentimentSelect('Positive')}
                 >
                   Positive
                 </Button>
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedSentiment === 'Neutral' ? 'bg-neutral text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedSentiment === 'Neutral' 
+                      ? 'bg-neutral text-white hover:bg-neutral' 
+                      : 'bg-white hover:bg-neutral/20'
+                  }`}
                   onClick={() => handleSentimentSelect('Neutral')}
                 >
                   Neutral
                 </Button>
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedSentiment === 'Negative' ? 'bg-negative text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedSentiment === 'Negative' 
+                      ? 'bg-negative text-white hover:bg-negative' 
+                      : 'bg-white hover:bg-negative/20'
+                  }`}
                   onClick={() => handleSentimentSelect('Negative')}
                 >
                   Negative
                 </Button>
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedSentiment === 'N/A' ? 'bg-gray-500 text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedSentiment === 'N/A' 
+                      ? 'bg-gray-500 text-white hover:bg-gray-500' 
+                      : 'bg-white hover:bg-gray-300'
+                  }`}
                   onClick={() => handleSentimentSelect('N/A')}
                 >
                   N/A
                 </Button>
               </div>
 
-              {/* Feedback Type Buttons */}
+              {/* Feedback Type Buttons with improved color transitions */}
               <div className="grid grid-cols-4 gap-4">
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedFeedback === 'Praise' ? 'bg-praise text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedFeedback === 'Praise' 
+                      ? 'bg-praise text-white hover:bg-praise' 
+                      : 'bg-white hover:bg-praise/20'
+                  }`}
                   onClick={() => handleFeedbackSelect('Praise')}
                 >
                   Praise
                 </Button>
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedFeedback === 'Feedback' ? 'bg-feedback text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedFeedback === 'Feedback' 
+                      ? 'bg-feedback text-white hover:bg-feedback' 
+                      : 'bg-white hover:bg-feedback/20'
+                  }`}
                   onClick={() => handleFeedbackSelect('Feedback')}
                 >
                   Feedback
                 </Button>
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedFeedback === 'Criticism' ? 'bg-criticism text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedFeedback === 'Criticism' 
+                      ? 'bg-criticism text-white hover:bg-criticism' 
+                      : 'bg-white hover:bg-criticism/20'
+                  }`}
                   onClick={() => handleFeedbackSelect('Criticism')}
                 >
                   Criticism
                 </Button>
                 <Button 
                   variant="outline" 
-                  className={`h-14 button-shadow ${selectedFeedback === 'N/A' ? 'bg-gray-500 text-white' : 'bg-white'}`}
+                  className={`h-14 button-shadow transition-colors ${
+                    selectedFeedback === 'N/A' 
+                      ? 'bg-gray-500 text-white hover:bg-gray-500' 
+                      : 'bg-white hover:bg-gray-300'
+                  }`}
                   onClick={() => handleFeedbackSelect('N/A')}
                 >
                   N/A
@@ -369,20 +447,19 @@ const Dashboard = () => {
                     </table>
                   </div>
                   
-                  {selectedUser && (
-                    <div className="bg-white rounded-lg p-4 border border-border">
-                      <p className="text-muted-foreground text-sm mb-1">Progress</p>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div 
-                            className="bg-primary rounded-full h-2 transition-all duration-500" 
-                            style={{ width: `${progress}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-sm font-medium">{progress}%</span>
+                  {/* Progress bar - now always shown regardless of user selection */}
+                  <div className="bg-white rounded-lg p-4 border border-border">
+                    <p className="text-muted-foreground text-sm mb-1">Team Progress</p>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div 
+                          className="bg-primary rounded-full h-2 transition-all duration-500" 
+                          style={{ width: `${progress}%` }}
+                        ></div>
                       </div>
+                      <span className="text-sm font-medium">{progress}%</span>
                     </div>
-                  )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
