@@ -1,4 +1,3 @@
-
 import { Response, Question, SentimentType, FeedbackType } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -86,47 +85,82 @@ export const getQuestions = async () => {
   }
 };
 
+// Function to mark a question as answered
+export const markQuestionAsAnswered = async (questionId: number): Promise<void> => {
+  try {
+    console.log(`Marking question ${questionId} as answered`);
+    
+    // Try a different approach to the update
+    const { error } = await supabase.rpc('mark_question_answered', { 
+      question_id: questionId 
+    });
+    
+    if (error) {
+      console.error('Error calling mark_question_answered function:', error);
+      
+      // Fallback to direct update if RPC fails
+      console.log('Trying direct update as fallback...');
+      const { error: updateError } = await supabase
+        .from('questions')
+        .update({ answered: true })
+        .eq('id', questionId);
+      
+      if (updateError) {
+        console.error('Fallback update also failed:', updateError);
+        throw updateError;
+      } else {
+        console.log(`Successfully marked question ${questionId} as answered via fallback`);
+      }
+    } else {
+      console.log(`Successfully marked question ${questionId} as answered via RPC`);
+    }
+  } catch (error) {
+    console.error('Error marking question as answered:', error);
+    throw error;
+  }
+};
+
 // Get next question for a user based on their previous responses
 export const getNextQuestionId = async (
   userName: string, 
   currentQuestionId: number,
 ): Promise<number> => {
   try {
-    // Get all questions
-    const { data: questions, error: questionsError } = await supabase
+    // Get all unanswered questions - include both false AND null values
+    const { data: unansweredQuestions, error: questionsError } = await supabase
       .from('questions')
-      .select('*');
+      .select('*')
+      .or('answered.is.null,answered.eq.false') // This syntax handles both NULL and false
+      .order('id', { ascending: true });
+    
+    console.log("Found questions:", unansweredQuestions?.length || 0);
     
     if (questionsError) throw questionsError;
     
-    // Get user's responses
-    const { data: userResponses, error: responsesError } = await supabase
-      .from('responses')
-      .select('*')
-      .eq('user_name', userName);
-    
-    if (responsesError) throw responsesError;
-    
-    // Get all question IDs the user has already answered
-    const answeredQuestionIds = new Set(userResponses.map(r => r.question_id));
-    
-    // Find questions the user hasn't answered yet
-    const unansweredQuestions = questions.filter(q => !answeredQuestionIds.has(q.id));
-    
-    // If there are unanswered questions, return the first one
-    if (unansweredQuestions.length > 0) {
-      return unansweredQuestions[0].id;
+    // If no unanswered questions at all, stay on current question
+    if (!unansweredQuestions || unansweredQuestions.length === 0) {
+      console.log('No unanswered questions found');
+      return currentQuestionId;
     }
     
-    // If user has answered all questions, find the least recently answered
-    if (userResponses.length > 0) {
-      // Sort by timestamp (oldest first)
-      const sortedResponses = [...userResponses].sort((a, b) => a.timestamp - b.timestamp);
-      return sortedResponses[0].question_id;
+    // Check if there are other unanswered questions different from current
+    const otherUnansweredQuestions = unansweredQuestions.filter(q => q.id !== currentQuestionId);
+    
+    // If there are other unanswered questions, return the first one
+    if (otherUnansweredQuestions.length > 0) {
+      console.log(`Found ${otherUnansweredQuestions.length} other unanswered questions`);
+      return otherUnansweredQuestions[0].id;
     }
     
-    // If no responses yet, return the current question ID or the first question
-    return currentQuestionId || (questions[0]?.id || 1);
+    // If the only unanswered question is the current one, return it
+    if (unansweredQuestions.length === 1 && unansweredQuestions[0].id === currentQuestionId) {
+      // This shouldn't happen but just in case
+      console.log('Only current question is unanswered');
+      return currentQuestionId;
+    }
+    
+    // If we get here, return the first unanswered question (should be covered by above cases but just in case)
+    return unansweredQuestions[0].id;
   } catch (error) {
     console.error('Error getting next question:', error);
     return currentQuestionId || 1;
